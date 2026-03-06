@@ -73,12 +73,24 @@ const trimRevisions = (note) => {
     }
 }
 
-export async function getAllNotes(_, res) {
+const ensureNoteOwner = (note, userId, res) => {
+    if (!note) {
+        res.status(404).json({ message: "Post does not exist" })
+        return false
+    }
+    if (note.userId.toString() !== userId) {
+        res.status(403).json({ message: "Forbidden" })
+        return false
+    }
+    return true
+}
+
+export async function getAllNotes(req, res) {
     try {
         const notes = await Note.find()
             .select("-revisions")
+            .populate("userId", "username")
             .sort({ pinned: -1, pinnedAt: -1, createdAt: -1 })
-        console.log(notes)
         res.status(200).send(notes);
     }
     catch (error) {
@@ -90,7 +102,7 @@ export async function getAllNotes(_, res) {
 
 export async function getNoteById(req, res) {
     try {
-        const note = await Note.findById(req.params.id)
+        const note = await Note.findById(req.params.id).populate("userId", "username")
         if (!note) return res.status(404).json({ message: "Post does not exist" })
         res.status(200).json(note)
     }
@@ -112,6 +124,7 @@ export async function createNote(req, res) {
         const parsedTags = parseTags(tags)
         const parsedPinned = parseBoolean(pinned) || false
         const newNode = new Note({
+            userId: req.user.id,
             title,
             content,
             imageUrl,
@@ -121,6 +134,7 @@ export async function createNote(req, res) {
         })
 
         const savedNode = await newNode.save()
+        await savedNode.populate("userId", "username")
 
         console.log(title, content)
         res.status(201).json(savedNode)
@@ -143,11 +157,11 @@ export async function updateNote(req, res) {
         }
 
         const note = await Note.findById(req.params.id)
-        if (!note) {
+        if (!ensureNoteOwner(note, req.user.id, res)) {
             if (req.file) {
                 await deleteImageIfExists(`/uploads/${req.file.filename}`)
             }
-            return res.status(404).json({ message: "fields are wrong" })
+            return
         }
 
         const shouldRemoveImage = removeImage === "true" || removeImage === true
@@ -180,6 +194,7 @@ export async function updateNote(req, res) {
         }
 
         const updatedNote = await note.save()
+        await updatedNote.populate("userId", "username")
 
         res.status(200).json(updatedNote)
     }
@@ -194,8 +209,9 @@ export async function updateNote(req, res) {
 
 export async function deleteNote(req, res) {
     try {
-        const deletedNote = await Note.findByIdAndDelete(req.params.id)
-        if (!deletedNote) return res.status(404).json({ message: "Post does not exist" })
+        const deletedNote = await Note.findById(req.params.id)
+        if (!ensureNoteOwner(deletedNote, req.user.id, res)) return
+        await deletedNote.deleteOne()
         const imageUrls = new Set([
             deletedNote.imageUrl,
             ...(deletedNote.revisions || []).map((revision) => revision.imageUrl),
@@ -214,7 +230,7 @@ export async function deleteNote(req, res) {
 export async function togglePin(req, res) {
     try {
         const note = await Note.findById(req.params.id)
-        if (!note) return res.status(404).json({ message: "Post does not exist" })
+        if (!ensureNoteOwner(note, req.user.id, res)) return
 
         const parsedPinned = parseBoolean(req.body?.pinned)
         const nextPinned = parsedPinned !== undefined ? parsedPinned : !note.pinned
@@ -223,6 +239,7 @@ export async function togglePin(req, res) {
         note.pinnedAt = nextPinned ? new Date() : null
 
         const updatedNote = await note.save()
+        await updatedNote.populate("userId", "username")
         res.status(200).json(updatedNote)
     } catch (error) {
         console.log(error)
@@ -233,7 +250,7 @@ export async function togglePin(req, res) {
 export async function getNoteRevisions(req, res) {
     try {
         const note = await Note.findById(req.params.id)
-        if (!note) return res.status(404).json({ message: "Post does not exist" })
+        if (!ensureNoteOwner(note, req.user.id, res)) return
 
         const revisions = [...note.revisions].sort(
             (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
@@ -250,7 +267,7 @@ export async function rollbackNoteRevision(req, res) {
     try {
         const { id, revisionId } = req.params
         const note = await Note.findById(id)
-        if (!note) return res.status(404).json({ message: "Post does not exist" })
+        if (!ensureNoteOwner(note, req.user.id, res)) return
 
         const revision = note.revisions.id(revisionId)
         if (!revision) return res.status(404).json({ message: "Revision not found" })
@@ -264,6 +281,7 @@ export async function rollbackNoteRevision(req, res) {
         note.imageUrl = revision.imageUrl || null
 
         const updatedNote = await note.save()
+        await updatedNote.populate("userId", "username")
 
         res.status(200).json(updatedNote)
     } catch (error) {

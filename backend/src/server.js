@@ -3,8 +3,10 @@ import dotenv from "dotenv"
 import cors from "cors"
 import path from "path"
 import { fileURLToPath } from "url"
+import cookieParser from "cookie-parser"
 
 import notesRoutes from "./routes/notesRoutes.js"
+import authRoutes from "./routes/authRoutes.js"
 import { connectDB } from "./config/db.js"
 import rateLimiter from "./middleware/rateLimiter.js"
 
@@ -18,12 +20,15 @@ const __dirname = path.dirname(__filename)
 //middleware
 app.use(
     cors({
-        origin: "http://localhost:5173"
+        origin: "http://localhost:5173",
+        credentials: true,
     })
 )
+app.use(cookieParser())
 app.use(express.json())           //this middleware parses the JSON bodies: req.body
 app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")))
 app.use(rateLimiter)
+app.use("/api/auth", authRoutes)
 app.use("/api/notes", notesRoutes)
 
 app.use((err, req, res, next) => {

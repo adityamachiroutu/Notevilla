@@ -5,9 +5,14 @@ import axiosInstance from "../lib/axios.js";
 import { toast } from "react-hot-toast"
 import ReactMarkdown from "react-markdown"
 import { markdownPlugins } from "../lib/markdown.js"
+import { useAuth } from "../contexts/AuthContext.jsx"
 
 const NoteCard = ({ note, setNotes }) => {
     const navigate = useNavigate()
+    const { user } = useAuth()
+    const ownerId = note?.userId?._id || note?.userId
+    const ownerName = note?.userId?.username || "Unknown"
+    const isOwner = Boolean(user && ownerId === user.id)
 
     const handleEdit = () => {
         navigate(`/note/${note._id}`, { state: { edit: true } })
@@ -90,32 +95,35 @@ const NoteCard = ({ note, setNotes }) => {
                 </div>
             </Link>
             <div className="card-actions justify-between items-center mt-4">
-                <span className="text-sm text-base-content/60">
-                    {formatDate(new Date(note.createdAt))}
-                </span>
-                <div className="flex items-center gap-1">
-                    <button
-                        className={`btn btn-ghost btn-xs ${note.pinned ? "text-primary" : ""}`}
-                        onClick={handleTogglePin}
-                        aria-label={note.pinned ? "Unpin note" : "Pin note"}
-                    >
-                        <PinIcon className="size-4" />
-                    </button>
-                    <button
-                        className="btn btn-ghost btn-xs"
-                        onClick={handleEdit}
-                        aria-label="Edit note"
-                    >
-                        <PenSquareIcon className="size-4" />
-                    </button>
-                    <button
-                        className="btn btn-ghost btn-xs text-error"
-                        onClick={() => handleDelete(note._id)}
-                        aria-label="Delete note"
-                    >
-                        <Trash2Icon className="size-4" />
-                    </button>
+                <div className="text-sm text-base-content/60">
+                    <div>By {ownerName}</div>
+                    <div>{formatDate(new Date(note.createdAt))}</div>
                 </div>
+                {isOwner && (
+                    <div className="flex items-center gap-1">
+                        <button
+                            className={`btn btn-ghost btn-xs ${note.pinned ? "text-primary" : ""}`}
+                            onClick={handleTogglePin}
+                            aria-label={note.pinned ? "Unpin note" : "Pin note"}
+                        >
+                            <PinIcon className="size-4" />
+                        </button>
+                        <button
+                            className="btn btn-ghost btn-xs"
+                            onClick={handleEdit}
+                            aria-label="Edit note"
+                        >
+                            <PenSquareIcon className="size-4" />
+                        </button>
+                        <button
+                            className="btn btn-ghost btn-xs text-error"
+                            onClick={() => handleDelete(note._id)}
+                            aria-label="Delete note"
+                        >
+                            <Trash2Icon className="size-4" />
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     </div>

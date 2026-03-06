@@ -9,10 +9,11 @@ import {
     rollbackNoteRevision,
     togglePin,
 } from "../controllers/notesController.js"
+import { requireAuth } from "../middleware/auth.js"
 import upload from "../middleware/upload.js"
 const router = express.Router();
 
-
+router.use(requireAuth)
 
 router.get("/", getAllNotes)
 router.get("/:id", getNoteById)

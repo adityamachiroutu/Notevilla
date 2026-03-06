@@ -8,6 +8,7 @@ import RateLimitedUI from "../Components/RateLimitedUI.jsx"
 import axiosInstance from "../lib/axios.js"
 import { formatDate, resolveImageUrl } from "../lib/utils.js"
 import { markdownPlugins } from "../lib/markdown.js"
+import { useAuth } from "../contexts/AuthContext.jsx"
 
 const NoteDetailPage = () => {
     const { id } = useParams()
@@ -34,6 +35,7 @@ const NoteDetailPage = () => {
     const [notFound, setNotFound] = useState(false)
     const fileInputRef = useRef(null)
     const contentRef = useRef(null)
+    const { user } = useAuth()
 
     useEffect(() => {
         const fetchNote = async () => {
@@ -66,6 +68,15 @@ const NoteDetailPage = () => {
 
         fetchNote()
     }, [id, location.state])
+
+    useEffect(() => {
+        if (!note) return
+        const ownerId = note?.userId?._id || note?.userId
+        const isOwner = Boolean(user && ownerId === user.id)
+        if (!isOwner && isEditing) {
+            setIsEditing(false)
+        }
+    }, [note, user, isEditing])
 
     useEffect(() => {
         if (!showHistory) return
@@ -268,6 +279,9 @@ const NoteDetailPage = () => {
 
     const createdAt = note?.createdAt ? formatDate(new Date(note.createdAt)) : ""
     const updatedAt = note?.updatedAt ? formatDate(new Date(note.updatedAt)) : ""
+    const ownerName = note?.userId?.username || "Unknown"
+    const ownerId = note?.userId?._id || note?.userId
+    const isOwner = Boolean(user && ownerId === user.id)
     const existingImageUrl = resolveImageUrl(note?.imageUrl)
     const displayImageUrl = imagePreview || (!removeImage ? existingImageUrl : "")
     const tags = note?.tags || []
@@ -307,13 +321,15 @@ const NoteDetailPage = () => {
                                             {isEditing ? "Edit note" : "Note details"}
                                         </h2>
                                         <p className="text-sm text-base-content/60">
+                                            By {ownerName}
+                                            {(createdAt || updatedAt) && " | "}
                                             {createdAt && `Created ${createdAt}`}
                                             {createdAt && updatedAt && " | "}
                                             {updatedAt && `Updated ${updatedAt}`}
                                         </p>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
-                                        {!isEditing && (
+                                        {!isEditing && isOwner && (
                                             <button
                                                 className="btn btn-ghost"
                                                 onClick={() => setIsEditing(true)}
@@ -322,7 +338,7 @@ const NoteDetailPage = () => {
                                                 Edit
                                             </button>
                                         )}
-                                        {!isEditing && (
+                                        {!isEditing && isOwner && (
                                             <button
                                                 className={`btn btn-ghost ${note?.pinned ? "text-primary" : ""}`}
                                                 onClick={handleTogglePin}
@@ -331,7 +347,7 @@ const NoteDetailPage = () => {
                                                 {note?.pinned ? "Unpin" : "Pin"}
                                             </button>
                                         )}
-                                        {!isEditing && (
+                                        {!isEditing && isOwner && (
                                             <button
                                                 className="btn btn-ghost"
                                                 onClick={() => setShowHistory((prev) => !prev)}
@@ -339,7 +355,7 @@ const NoteDetailPage = () => {
                                                 {showHistory ? "Hide history" : "History"}
                                             </button>
                                         )}
-                                        {isEditing && (
+                                        {isEditing && isOwner && (
                                             <>
                                                 <button
                                                     className="btn btn-ghost"
@@ -357,14 +373,16 @@ const NoteDetailPage = () => {
                                                 </button>
                                             </>
                                         )}
-                                        <button
-                                            className="btn btn-error btn-outline"
-                                            onClick={handleDelete}
-                                            disabled={deleting}
-                                        >
-                                            <Trash2Icon className="size-4" />
-                                            {deleting ? "Deleting..." : "Delete"}
-                                        </button>
+                                        {isOwner && (
+                                            <button
+                                                className="btn btn-error btn-outline"
+                                                onClick={handleDelete}
+                                                disabled={deleting}
+                                            >
+                                                <Trash2Icon className="size-4" />
+                                                {deleting ? "Deleting..." : "Delete"}
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
 
@@ -504,7 +522,7 @@ const NoteDetailPage = () => {
                                     )
                                 )}
 
-                                {showHistory && !isEditing && (
+                                {showHistory && !isEditing && isOwner && (
                                     <div className="rounded-lg border border-base-300 bg-base-200 p-4">
                                         <div className="flex items-center justify-between mb-4">
                                             <h3 className="text-lg font-semibold">Version history</h3>
@@ -530,8 +548,8 @@ const NoteDetailPage = () => {
                                                         key={version._id}
                                                         type="button"
                                                         className={`btn btn-ghost justify-between ${selectedVersion?._id === version._id
-                                                                ? "bg-base-300"
-                                                                : ""
+                                                            ? "bg-base-300"
+                                                            : ""
                                                             }`}
                                                         onClick={() => setSelectedVersion(version)}
                                                     >

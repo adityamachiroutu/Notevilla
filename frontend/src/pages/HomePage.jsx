@@ -5,6 +5,7 @@ import RateLimitedUI from "../Components/RateLimitedUI.jsx"
 import NoteCard from "../Components/NoteCard.jsx"
 import toast from "react-hot-toast"
 import axiosInstance from "../lib/axios.js";
+import { useAuth } from "../contexts/AuthContext.jsx"
 
 const HomePage = () => {
     const [isRateLimited, setIsRateLimited] = useState(false);
@@ -16,6 +17,7 @@ const HomePage = () => {
     const [startDate, setStartDate] = useState("")
     const [endDate, setEndDate] = useState("")
     const [selectedTag, setSelectedTag] = useState("")
+    const { user, logout } = useAuth()
 
     useEffect(() => {
         const fetchNotes = async () => {
@@ -38,6 +40,13 @@ const HomePage = () => {
 
         fetchNotes()
     }, [])
+
+    const handleLogout = async () => {
+        const result = await logout()
+        if (!result.ok) {
+            toast.error(result.message)
+        }
+    }
 
 
     const normalizedTerm = searchTerm.trim().toLowerCase()
@@ -98,6 +107,15 @@ const HomePage = () => {
             {isRateLimited && <RateLimitedUI />}
 
             <div className="max-w-7xl mx-auto p-4 mt-6">
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-3 text-sm text-base-content/70">
+                    <span>
+                        Logged in as:{" "}
+                        <span className="font-semibold text-base-content">{user?.username}</span>
+                    </span>
+                    <button className="btn btn-ghost btn-sm" type="button" onClick={handleLogout}>
+                        Log out
+                    </button>
+                </div>
                 {loading && <div className="text-center text-primary py-10">Loading data...</div>}
 
                 {!loading && !isRateLimited && notes.length === 0 && (

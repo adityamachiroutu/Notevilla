@@ -3,22 +3,27 @@ import path from "path"
 import { fileURLToPath } from "url"
 import fs from "fs"
 
+const useS3 = process.env.S3_UPLOADS === "true"
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const uploadsDir = path.join(__dirname, "..", "..", "uploads")
 
-fs.mkdirSync(uploadsDir, { recursive: true })
+if (!useS3) {
+    fs.mkdirSync(uploadsDir, { recursive: true })
+}
 
-const storage = multer.diskStorage({
-    destination: (_, __, cb) => {
-        cb(null, uploadsDir)
-    },
-    filename: (_, file, cb) => {
-        const ext = path.extname(file.originalname).toLowerCase()
-        const safeName = `image-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`
-        cb(null, safeName)
-    },
-})
+const storage = useS3
+    ? multer.memoryStorage()
+    : multer.diskStorage({
+        destination: (_, __, cb) => {
+            cb(null, uploadsDir)
+        },
+        filename: (_, file, cb) => {
+            const ext = path.extname(file.originalname).toLowerCase()
+            const safeName = `image-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`
+            cb(null, safeName)
+        },
+    })
 
 const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"])
 

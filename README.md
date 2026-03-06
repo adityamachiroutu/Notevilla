@@ -17,7 +17,7 @@ Full-stack notes app with image uploads and LaTeX math rendering.
 ## Tech Stack
 - Frontend: React, Vite, Tailwind CSS, DaisyUI
 - Backend: Node.js, Express, MongoDB (Mongoose)
-- Storage: Local uploads folder (soon to be s3)
+- Storage: Local uploads or S3
 - Rate limit: Upstash Redis
 
 ## Project Structure
@@ -35,6 +35,10 @@ MONGO_URI=your_mongodb_connection_string
 UPSTASH_REDIS_REST_URL=your_upstash_redis_url
 UPSTASH_REDIS_REST_TOKEN=your_upstash_redis_token
 JWT_SECRET=your_long_random_secret
+S3_UPLOADS=false
+AWS_REGION=your_aws_region
+AWS_S3_BUCKET=your_s3_bucket_name
+AWS_S3_PUBLIC_BASE_URL=https://your-public-bucket-domain
 PORT=5001
 ```
 
@@ -61,8 +65,9 @@ npm run dev
 The app will run on http://localhost:5173.
 
 ## Notes on Images
-- Uploaded images are stored in backend/uploads
-- The API serves them at /uploads/...
+- Local uploads are stored in backend/uploads
+- The API serves local images at /uploads/...
+- To use S3, set `S3_UPLOADS=true` and configure the S3 env vars above
 
 ## Markdown and LaTeX
 - Use standard Markdown for bold/italic
@@ -106,6 +111,20 @@ $$
 - Log in with the same user, confirm home shows the username
 - Create a note as user A, ensure it shows for user B with the owner name
 - Attempt to update/delete another user's note and confirm 403
+
+## Python Tests
+Backend integration tests live in backend/tests and hit a running API.
+
+```
+pip install -r backend/tests/requirements.txt
+pytest backend/tests
+```
+
+Optional: override the API base URL
+
+```
+NOTEVILLA_API_BASE_URL=http://localhost:5001/api pytest backend/tests
+```
 
 ## Scripts
 

@@ -2,6 +2,7 @@ import Note from "../models/Note.js"
 import fs from "fs/promises"
 import path from "path"
 import { fileURLToPath } from "url"
+import { deleteFromS3, isS3Enabled, uploadBufferToS3 } from "../config/s3.js"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -47,7 +48,18 @@ const getLocalImagePath = (imageUrl) => {
     return path.join(uploadsDir, fileName)
 }
 
-const deleteImageIfExists = async (imageUrl) => {
+const deleteImageIfExists = async (imageUrl, imageKey) => {
+    if (isS3Enabled()) {
+        try {
+            if (imageKey) {
+                await deleteFromS3(imageKey)
+                return
+            }
+        } catch (error) {
+            console.error("Failed to delete S3 image", error)
+        }
+    }
+
     const filePath = getLocalImagePath(imageUrl)
     if (!filePath) return
     try {
@@ -59,10 +71,26 @@ const deleteImageIfExists = async (imageUrl) => {
     }
 }
 
+const storeUploadedImage = async (file) => {
+    if (!file) return { imageUrl: null, imageKey: null }
+
+    if (isS3Enabled()) {
+        const uploadResult = await uploadBufferToS3({
+            buffer: file.buffer,
+            contentType: file.mimetype,
+            originalName: file.originalname,
+        })
+        return { imageUrl: uploadResult.url, imageKey: uploadResult.key }
+    }
+
+    return { imageUrl: `/uploads/${file.filename}`, imageKey: null }
+}
+
 const createRevisionSnapshot = (note) => ({
     title: note.title,
     content: note.content,
     imageUrl: note.imageUrl,
+    imageKey: note.imageKey,
     tags: note.tags || [],
     createdAt: new Date(),
 })
@@ -114,13 +142,16 @@ export async function getNoteById(req, res) {
 }
 
 export async function createNote(req, res) {
+    let uploadedImage = null
     try {
         const { title, content, tags, pinned } = req.body
         if (req.fileValidationError) {
             return res.status(400).json({ message: req.fileValidationError })
         }
 
-        const imageUrl = req.file ? `/uploads/${req.file.filename}` : null
+        uploadedImage = await storeUploadedImage(req.file)
+        const imageUrl = uploadedImage.imageUrl
+        const imageKey = uploadedImage.imageKey
         const parsedTags = parseTags(tags)
         const parsedPinned = parseBoolean(pinned) || false
         const newNode = new Note({
@@ -128,6 +159,7 @@ export async function createNote(req, res) {
             title,
             content,
             imageUrl,
+            imageKey,
             tags: parsedTags,
             pinned: parsedPinned,
             pinnedAt: parsedPinned ? new Date() : null,
@@ -140,8 +172,8 @@ export async function createNote(req, res) {
         res.status(201).json(savedNode)
     }
     catch (error) {
-        if (req.file) {
-            await deleteImageIfExists(`/uploads/${req.file.filename}`)
+        if (uploadedImage?.imageUrl || uploadedImage?.imageKey) {
+            await deleteImageIfExists(uploadedImage.imageUrl, uploadedImage.imageKey)
         }
         console.error(error)
         res.status(500).json({ message: "Internal server error" })
@@ -150,6 +182,7 @@ export async function createNote(req, res) {
 }
 
 export async function updateNote(req, res) {
+    let uploadedImage = null
     try {
         const { title, content, removeImage, tags, pinned } = req.body
         if (req.fileValidationError) {
@@ -188,9 +221,12 @@ export async function updateNote(req, res) {
         }
 
         if (req.file) {
-            note.imageUrl = `/uploads/${req.file.filename}`
+            uploadedImage = await storeUploadedImage(req.file)
+            note.imageUrl = uploadedImage.imageUrl
+            note.imageKey = uploadedImage.imageKey
         } else if (shouldRemoveImage) {
             note.imageUrl = null
+            note.imageKey = null
         }
 
         const updatedNote = await note.save()
@@ -199,8 +235,8 @@ export async function updateNote(req, res) {
         res.status(200).json(updatedNote)
     }
     catch (error) {
-        if (req.file) {
-            await deleteImageIfExists(`/uploads/${req.file.filename}`)
+        if (uploadedImage?.imageUrl || uploadedImage?.imageKey) {
+            await deleteImageIfExists(uploadedImage.imageUrl, uploadedImage.imageKey)
         }
         console.log(error)
         res.status(500).json({ message: "internal servor error" })
@@ -212,12 +248,20 @@ export async function deleteNote(req, res) {
         const deletedNote = await Note.findById(req.params.id)
         if (!ensureNoteOwner(deletedNote, req.user.id, res)) return
         await deletedNote.deleteOne()
-        const imageUrls = new Set([
-            deletedNote.imageUrl,
-            ...(deletedNote.revisions || []).map((revision) => revision.imageUrl),
-        ])
-        for (const imageUrl of imageUrls) {
-            await deleteImageIfExists(imageUrl)
+        const images = [
+            { url: deletedNote.imageUrl, key: deletedNote.imageKey },
+            ...(deletedNote.revisions || []).map((revision) => ({
+                url: revision.imageUrl,
+                key: revision.imageKey,
+            })),
+        ]
+
+        const uniqueKeys = new Set()
+        for (const image of images) {
+            const dedupeKey = image.key || image.url || ""
+            if (!dedupeKey || uniqueKeys.has(dedupeKey)) continue
+            uniqueKeys.add(dedupeKey)
+            await deleteImageIfExists(image.url, image.key)
         }
         res.status(200).json(deletedNote)
     }
@@ -279,6 +323,7 @@ export async function rollbackNoteRevision(req, res) {
         note.content = revision.content
         note.tags = revision.tags || []
         note.imageUrl = revision.imageUrl || null
+        note.imageKey = revision.imageKey || null
 
         const updatedNote = await note.save()
         await updatedNote.populate("userId", "username")

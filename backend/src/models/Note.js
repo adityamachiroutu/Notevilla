@@ -17,6 +17,10 @@ const revisionSchema = new mongoose.Schema(
             type: String,
             default: null
         },
+        imageKey: {
+            type: String,
+            default: null,
+        },
         tags: {
             type: [String],
             default: []
@@ -48,6 +52,10 @@ const noteSchema = new mongoose.Schema(
         imageUrl: {
             type: String,
             default: null
+        },
+        imageKey: {
+            type: String,
+            default: null,
         },
         tags: {
             type: [String],
